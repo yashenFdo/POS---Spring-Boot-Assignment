@@ -34,7 +34,9 @@ public class CheckoutService {
             throw new InvalidStateException("Order must be in PENDING state to checkout. Current state: " + order.getStatus());
         }
 
-        order.setIdempotencyKey(idempotencyKey);
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            order.setIdempotencyKey(idempotencyKey);
+        }
 
         for (OrderItem item : order.getOrderItems()) {
             Product product = productRepository.findByIdForUpdate(item.getProductId())
