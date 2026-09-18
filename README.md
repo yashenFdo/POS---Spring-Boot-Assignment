@@ -19,7 +19,11 @@ This is a concurrency-safe Point-of-Sale (POS) backend and a React frontend demo
 - MySQL 8 (if running locally outside of tests)
 
 ### Running the application locally
-1. Ensure MySQL is running and update `SPRING_DATASOURCE_USERNAME` and `SPRING_DATASOURCE_PASSWORD` environment variables if different from `root`/`root`.
+1. Ensure MySQL is running and set the environment variables if your credentials are different from `root`/`root`. For example, in PowerShell:
+   ```powershell
+   $env:SPRING_DATASOURCE_USERNAME="your_username"
+   $env:SPRING_DATASOURCE_PASSWORD="your_password"
+   ```
 2. Run the application from the `backend` directory:
    ```bash
    cd backend
