@@ -13,6 +13,17 @@ const STATUS_COLOR = {
   EXPIRED: '#6b7280', CANCELLED: '#6b7280',
 };
 
+// All API responses are now { code, message, data }
+const apiFetch = async (url, options = {}) => {
+  const res = await fetch(url, options);
+  const json = await res.json();
+  if (!res.ok) {
+    // json.message comes from StandardResponse / GlobalExceptionHandler
+    throw new Error(json.message || `Request failed with status ${res.status}`);
+  }
+  return json.data; // unwrap the envelope — callers get the payload directly
+};
+
 function Badge({ status }) {
   return (
     <span className="badge" style={{ '--c': STATUS_COLOR[status] || '#6b7280' }}>
@@ -52,8 +63,12 @@ function ProductsTab() {
   };
 
   const load = useCallback(async () => {
-    const r = await fetch(`${API}/products`);
-    setProducts(await r.json());
+    try {
+      const data = await apiFetch(`${API}/products`);
+      setProducts(data);
+    } catch (e) {
+      notify(e.message, 'error');
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -72,22 +87,30 @@ function ProductsTab() {
 
   const submit = async (e) => {
     e.preventDefault();
-    const body = { name: form.name, price: parseFloat(form.price), availableStock: parseInt(form.availableStock) };
-    const url = editId ? `${API}/products/${editId}` : `${API}/products`;
-    const method = editId ? 'PUT' : 'POST';
-    const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (r.ok) {
+    try {
+      const body = { name: form.name, price: parseFloat(form.price), availableStock: parseInt(form.availableStock) };
+      const url = editId ? `${API}/products/${editId}` : `${API}/products`;
+      await apiFetch(url, {
+        method: editId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
       notify(editId ? 'Product updated!' : 'Product created!');
       setShowForm(false);
       load();
-    } else {
-      notify('Failed to save product', 'error');
+    } catch (e) {
+      notify(e.message, 'error');
     }
   };
 
   const remove = async (id) => {
-    const r = await fetch(`${API}/products/${id}`, { method: 'DELETE' });
-    if (r.ok) { notify('Product deleted.', 'error'); load(); }
+    try {
+      await apiFetch(`${API}/products/${id}`, { method: 'DELETE' });
+      notify('Product deleted.', 'error');
+      load();
+    } catch (e) {
+      notify(e.message, 'error');
+    }
     setDeleteConfirm(null);
   };
 
@@ -109,9 +132,7 @@ function ProductsTab() {
         <div className="table-wrap">
           <table className="table">
             <thead>
-              <tr>
-                <th>#</th><th>Name</th><th>Price</th><th>Stock</th><th>Actions</th>
-              </tr>
+              <tr><th>#</th><th>Name</th><th>Price</th><th>Stock</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {products.map(p => (
@@ -135,7 +156,6 @@ function ProductsTab() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
       {showForm && (
         <Modal title={editId ? 'Edit Product' : 'New Product'} onClose={() => setShowForm(false)}>
           <form className="form" onSubmit={submit}>
@@ -153,7 +173,6 @@ function ProductsTab() {
         </Modal>
       )}
 
-      {/* Delete Confirm Modal */}
       {deleteConfirm && (
         <Modal title="Delete Product" onClose={() => setDeleteConfirm(null)}>
           <div className="confirm-body">
@@ -180,7 +199,7 @@ function POSTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
-  const [view, setView] = useState('pos'); // 'pos' | 'orders'
+  const [view, setView] = useState('pos');
 
   const notify = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -188,13 +207,17 @@ function POSTab() {
   };
 
   const loadProducts = useCallback(async () => {
-    const r = await fetch(`${API}/products`);
-    setProducts(await r.json());
+    try {
+      const data = await apiFetch(`${API}/products`);
+      setProducts(data);
+    } catch (e) { /* silent */ }
   }, []);
 
   const loadOrders = useCallback(async () => {
-    const r = await fetch(`${API}/orders`);
-    setOrders(await r.json());
+    try {
+      const data = await apiFetch(`${API}/orders`);
+      setOrders(data);
+    } catch (e) { /* silent */ }
   }, []);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
@@ -221,47 +244,44 @@ function POSTab() {
   const apiCall = async (fn) => {
     setLoading(true); setError(null);
     try { await fn(); }
-    catch (e) { setError(e.message || 'Request failed'); }
+    catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
 
   const createOrder = () => apiCall(async () => {
-    const r = await fetch(`${API}/orders/cart`, {
+    const data = await apiFetch(`${API}/orders/cart`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })) })
     });
-    if (!r.ok) throw new Error(await r.text());
-    setOrder(await r.json()); setCart([]);
+    setOrder(data); setCart([]);
     notify('Order created!');
   });
 
   const checkout = () => apiCall(async () => {
-    const r = await fetch(`${API}/orders/${order.id}/checkout`, {
+    const data = await apiFetch(`${API}/orders/${order.id}/checkout`, {
       method: 'POST', headers: { 'Idempotency-Key': uuid() }
     });
-    if (!r.ok) throw new Error(await r.text());
-    setOrder(await r.json()); loadProducts();
+    setOrder(data); loadProducts();
     notify('Stock reserved! Proceed to payment.');
   });
 
   const pay = (outcome) => apiCall(async () => {
-    const r = await fetch(`${API}/payments/process`, {
+    await apiFetch(`${API}/payments/process`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
       body: JSON.stringify({ orderId: order.id, outcome })
     });
-    if (!r.ok) throw new Error(await r.text());
-    const upd = await fetch(`${API}/orders/${order.id}`);
-    setOrder(await upd.json()); loadProducts();
+    // Refresh order state
+    const updated = await apiFetch(`${API}/orders/${order.id}`);
+    setOrder(updated); loadProducts();
     notify(outcome === 'SUCCESS' ? '🎉 Payment successful!' : `Payment ${outcome.toLowerCase()}.`,
       outcome === 'SUCCESS' ? 'success' : 'error');
   });
 
   const cancel = () => apiCall(async () => {
-    const r = await fetch(`${API}/orders/${order.id}/cancel`, { method: 'POST' });
-    if (!r.ok) throw new Error(await r.text());
-    setOrder(await r.json()); loadProducts();
+    const data = await apiFetch(`${API}/orders/${order.id}/cancel`, { method: 'POST' });
+    setOrder(data); loadProducts();
     notify('Order cancelled.', 'error');
   });
 
@@ -271,14 +291,12 @@ function POSTab() {
     <div className="tab-content">
       {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
 
-      {/* Sub-nav */}
       <div className="subnav">
         <button className={`subnav-btn ${view === 'pos' ? 'active' : ''}`} onClick={() => setView('pos')}>🛒 Point of Sale</button>
         <button className={`subnav-btn ${view === 'orders' ? 'active' : ''}`} onClick={() => { setView('orders'); loadOrders(); }}>📋 Orders History</button>
       </div>
 
       {view === 'orders' ? (
-        /* ── Orders History ── */
         <div>
           <div className="section-header">
             <h2>All Orders</h2>
@@ -305,9 +323,7 @@ function POSTab() {
           )}
         </div>
       ) : (
-        /* ── POS ── */
         <div className="pos-layout">
-          {/* Products */}
           <div className="pos-products">
             <div className="section-header">
               <h2>Products</h2>
@@ -318,12 +334,8 @@ function POSTab() {
             ) : (
               <div className="product-grid">
                 {products.map(p => (
-                  <button
-                    key={p.id}
-                    className={`product-tile ${p.availableStock === 0 ? 'disabled' : ''}`}
-                    onClick={() => addToCart(p)}
-                    disabled={p.availableStock === 0}
-                  >
+                  <button key={p.id} className={`product-tile ${p.availableStock === 0 ? 'disabled' : ''}`}
+                    onClick={() => addToCart(p)} disabled={p.availableStock === 0}>
                     <span className="tile-emoji">{p.availableStock === 0 ? '🚫' : '📦'}</span>
                     <span className="tile-name">{p.name}</span>
                     <span className="tile-price">{fmt(p.price)}</span>
@@ -336,21 +348,17 @@ function POSTab() {
             )}
           </div>
 
-          {/* Cart / Order panel */}
           <div className="pos-sidebar">
             {!order ? (
               <div className="panel">
                 <div className="panel-header">
                   <h2>Cart</h2>
-                  {cart.length > 0 && <span className="count-badge">{cart.reduce((s,i)=>s+i.quantity,0)}</span>}
+                  {cart.length > 0 && <span className="count-badge">{cart.reduce((s, i) => s + i.quantity, 0)}</span>}
                 </div>
-
                 {error && <div className="inline-error">⚠️ {error}</div>}
-
                 {cart.length === 0 ? (
                   <div className="empty-state sm">
-                    <span className="empty-icon">🛍️</span>
-                    <p>Tap a product to add it</p>
+                    <span className="empty-icon">🛍️</span><p>Tap a product to add it</p>
                   </div>
                 ) : (
                   <>
@@ -386,13 +394,13 @@ function POSTab() {
                   <h2>Order #{order.id}</h2>
                   <Badge status={order.status} />
                 </div>
-
                 {error && <div className="inline-error">⚠️ {error}</div>}
-
                 <div className="order-info">
-                  <div className="order-info-row"><span>Total</span><span className="big-price">{fmt(order.totalAmount)}</span></div>
+                  <div className="order-info-row">
+                    <span>Total</span>
+                    <span className="big-price">{fmt(order.totalAmount)}</span>
+                  </div>
                 </div>
-
                 <div className="order-btns">
                   {order.status === 'PENDING' && (<>
                     <button className="btn btn-primary btn-full" onClick={checkout} disabled={loading}>
@@ -447,17 +455,12 @@ export default function App() {
             <span className="logo-text">TechLoom <em>POS</em></span>
           </div>
           <nav className="tabs">
-            <button className={`tab-btn ${tab === 'pos' ? 'active' : ''}`} onClick={() => setTab('pos')}>
-              POS &amp; Orders
-            </button>
-            <button className={`tab-btn ${tab === 'products' ? 'active' : ''}`} onClick={() => setTab('products')}>
-              Products
-            </button>
+            <button className={`tab-btn ${tab === 'pos' ? 'active' : ''}`} onClick={() => setTab('pos')}>POS &amp; Orders</button>
+            <button className={`tab-btn ${tab === 'products' ? 'active' : ''}`} onClick={() => setTab('products')}>Products</button>
             <a href="/swagger-ui.html" target="_blank" className="tab-btn external">API Docs ↗</a>
           </nav>
         </div>
       </header>
-
       <main className="main">
         {tab === 'pos' && <POSTab />}
         {tab === 'products' && <ProductsTab />}

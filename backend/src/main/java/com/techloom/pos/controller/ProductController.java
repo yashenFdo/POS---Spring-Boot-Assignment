@@ -1,8 +1,10 @@
 package com.techloom.pos.controller;
 
+import com.techloom.pos.dto.StandardResponse;
 import com.techloom.pos.model.Product;
 import com.techloom.pos.service.ProductService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,29 +20,33 @@ public class ProductController {
     }
 
     @GetMapping
-    public List<Product> getAllProducts() {
-        return productService.getAllProducts();
+    public ResponseEntity<StandardResponse> getAllProducts() {
+        List<Product> products = productService.getAllProducts();
+        return ResponseEntity.ok(new StandardResponse(200, "Products retrieved successfully!", products));
     }
 
     @GetMapping("/{id}")
-    public Product getProductById(@PathVariable Long id) {
-        return productService.getProductById(id);
+    public ResponseEntity<StandardResponse> getProductById(@PathVariable Long id) {
+        Product product = productService.getProductById(id);
+        return ResponseEntity.ok(new StandardResponse(200, "Product found!", product));
     }
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Product createProduct(@RequestBody Product product) {
-        return productService.createProduct(product);
+    public ResponseEntity<StandardResponse> createProduct(@RequestBody Product product) {
+        Product saved = productService.createProduct(product);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new StandardResponse(201, "New product added successfully!", saved));
     }
 
     @PutMapping("/{id}")
-    public Product updateProduct(@PathVariable Long id, @RequestBody Product product) {
-        return productService.updateProduct(id, product);
+    public ResponseEntity<StandardResponse> updateProduct(@PathVariable Long id, @RequestBody Product product) {
+        Product updated = productService.updateProduct(id, product);
+        return ResponseEntity.ok(new StandardResponse(200, "Product updated successfully!", updated));
     }
 
     @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteProduct(@PathVariable Long id) {
+    public ResponseEntity<StandardResponse> deleteProduct(@PathVariable Long id) {
         productService.deleteProduct(id);
+        return ResponseEntity.ok(new StandardResponse(200, "Product deleted successfully!", null));
     }
 }
